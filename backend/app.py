@@ -30,7 +30,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Model configuration
 # Construct path explicitly to avoid Windows path issues
 backend_dir = os.path.dirname(os.path.abspath(__file__))
-MODEL_CHECKPOINT_PATH = os.path.join(backend_dir, "saved_models", "cp_mid.weights.h5")
+MODEL_CHECKPOINT_PATH = os.path.join(backend_dir, "weights", "cp_mid.weights.h5")
 
 # Print for debugging
 print(f"[DEBUG] Looking for model at: {MODEL_CHECKPOINT_PATH}")
