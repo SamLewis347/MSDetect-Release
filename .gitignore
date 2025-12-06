@@ -1,32 +1,12 @@
-# Python
+# Python environments and cache
 .venv/
 spVenv/
-
-#Node/Vue
-frontend/node_modules/
-frontend/dist/
-node_modules/
-
-# VS Code settings
-.vscode/
-
-#Training Data
-PetImages.zip
-PetImages/
-MS/
-backend/data/
-ms_dataset/
-preprocessed/
-ms_T1_dataset/
-
-# model specific data
-axial_hp/
-cp.weights.h5
-cp_mid.weights.h5
-training_patches.h5
-val_patches.h5
-
-
-# Ignore Python cache
 *.pyc
 __pycache__/
+
+# Editor settings
+.vscode/
+
+
+# macOS system file
+.DS_Store
