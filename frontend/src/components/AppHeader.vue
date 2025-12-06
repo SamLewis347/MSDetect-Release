@@ -127,7 +127,7 @@
 
   // Dynamically update nav text and link destinations
   const navLinkText = computed (() =>
-    route.path === "/diagnostic-tool" ? "Back to Homepage" : "Try the Detection Tool"
+    route.path === "/diagnostic-tool" ? "Back to Homepage" : "Try the Analysis Tool"
   );
 
   const navLinkTo = computed (() =>
