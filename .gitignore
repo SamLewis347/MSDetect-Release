@@ -7,6 +7,5 @@ __pycache__/
 # Editor settings
 .vscode/
 
-
 # macOS system file
 .DS_Store
