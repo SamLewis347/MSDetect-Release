@@ -29,7 +29,9 @@
             {{ navLinkText }}
           </a>
           <a
-            href="#"
+            href="https://github.com/SamLewis347/MSDetect-Release"
+            target="_blank"
+            rel="noopener noreferrer"
             class="text-slate-200 hover:text-sky-400 transition-colors duration-200"
           >
             View on GitHub
