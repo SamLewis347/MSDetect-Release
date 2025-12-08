@@ -25,7 +25,15 @@ from utils.preprocess_mri_to_png import preprocess_single_file
 from models.patch_based_tensor import model_builder, predict_patients_slices
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app,resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:5173", # Local dev server
+            "https://ms-detect.web.app", # Firebase frontend application
+            "https://ms-detect.firebaseapp.com"
+        ]
+    }
+})
 
 # Model configuration
 # Construct path explicitly to avoid Windows path issues

@@ -214,6 +214,8 @@
 import { ref, computed } from "vue";
 import axios from "axios";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5001";
+
 const fileInput = ref(null);
 const selectedFile = ref(null);
 const fileName = ref("");
@@ -301,7 +303,7 @@ const generatePreview = async () => {
   const formData = new FormData();
   formData.append("file", selectedFile.value);
   try {
-    const res = await axios.post("http://127.0.0.1:5001/preview", formData, {
+    const res = await axios.post(`${API_URL}/preview`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     previewSlices.value = res.data.slices || [];
@@ -323,7 +325,7 @@ const submitFile = async () => {
   formData.append("file", selectedFile.value);
 
   try {
-    const res = await axios.post("http://127.0.0.1:5001/predict", formData, {
+    const res = await axios.post(`${API_URL}/predict`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
 
