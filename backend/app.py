@@ -1,14 +1,12 @@
 """
 app.py
 Backend API entry point for MRI model inference.
-
-Routes:
-    GET / - Sanity check route to confirm that the API is functional
-    POST /predict - Accepts an MRI volume (.nii) file and returns MS prediction with heatmaps
-    POST /preview - Generate scrollable axial preview of uploaded MRI
+CRITICAL FIX: TensorFlow/Keras hangs in Gunicorn workers.
+Solution: Load model AFTER fork (lazy loading per worker)
 """
 
 import os
+import sys
 import tempfile
 import base64
 import io
@@ -17,6 +15,15 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
 import numpy as np
+
+# Configure TensorFlow BEFORE importing
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# CRITICAL: Prevent TensorFlow from using multiple threads on single CPU
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['TF_NUM_INTRAOP_THREADS'] = '1'
+os.environ['TF_NUM_INTEROP_THREADS'] = '1'
+os.environ['KMP_AFFINITY'] = 'none'
 
 # Import the preprocessing function
 from utils.preprocess_mri_to_png import preprocess_single_file
@@ -28,30 +35,66 @@ app = Flask(__name__)
 CORS(app,resources={
     r"/*": {
         "origins": [
-            "http://localhost:5173", # Local dev server
-            "https://ms-detect.web.app", # Firebase frontend application
+            "http://localhost:5173",
+            "https://ms-detect.web.app",
             "https://ms-detect.firebaseapp.com"
         ]
     }
 })
 
 # Model configuration
-# Construct path explicitly to avoid Windows path issues
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 MODEL_CHECKPOINT_PATH = os.path.join(backend_dir, "weights", "cp_mid.weights.h5")
-
-# Print for debugging
-print(f"[DEBUG] Looking for model at: {MODEL_CHECKPOINT_PATH}")
-if not os.path.exists(MODEL_CHECKPOINT_PATH):
-    print(f"[WARNING] Model file not found at {MODEL_CHECKPOINT_PATH}")
-    print(f"[INFO] Please ensure the weights file exists at this location")
-
 PATCH_SIZE = 32
 
-# Load model once at startup
-print("[INFO] Loading model at startup...")
-model, _, _ = model_builder(patch_size=PATCH_SIZE, resume=False)
-print("[INFO] Model loaded successfully!")
+# CRITICAL: Global model variable that gets loaded LAZILY per worker
+_model = None
+
+def get_model():
+    """
+    Lazy load model per worker to avoid Gunicorn fork issues.
+    TensorFlow/Keras doesn't work well when model is loaded before fork.
+    """
+    global _model
+    
+    if _model is None:
+        print(f"[INFO] Worker PID {os.getpid()}: Loading model for the first time...", flush=True)
+        sys.stdout.flush()
+        
+        # Verify model file exists
+        if not os.path.exists(MODEL_CHECKPOINT_PATH):
+            error_msg = f"Model weights not found at {MODEL_CHECKPOINT_PATH}"
+            print(f"[ERROR] {error_msg}", flush=True)
+            raise FileNotFoundError(error_msg)
+        
+        try:
+            # Build model architecture
+            print(f"[INFO] Worker {os.getpid()}: Building model architecture...", flush=True)
+            _model, _, _ = model_builder(patch_size=PATCH_SIZE, resume=False)
+            
+            # Load weights
+            print(f"[INFO] Worker {os.getpid()}: Loading weights from {MODEL_CHECKPOINT_PATH}...", flush=True)
+            _model.load_weights(MODEL_CHECKPOINT_PATH)
+            
+            # CRITICAL: Warm up the model with a dummy prediction
+            # This forces TensorFlow to compile the graph BEFORE handling real requests
+            print(f"[INFO] Worker {os.getpid()}: Warming up model with dummy prediction...", flush=True)
+            sys.stdout.flush()
+            
+            dummy_input = np.zeros((1, PATCH_SIZE, PATCH_SIZE, 3), dtype=np.float32)
+            _ = _model.predict(dummy_input, verbose=0)
+            
+            print(f"[SUCCESS] Worker {os.getpid()}: Model ready for inference!", flush=True)
+            sys.stdout.flush()
+            
+        except Exception as e:
+            print(f"[ERROR] Worker {os.getpid()}: Failed to load model: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush()
+            raise
+    
+    return _model
 
 
 @app.route("/", methods=["GET"])
@@ -59,27 +102,19 @@ def home():
     """Sanity check to confirm backend is running"""
     return jsonify({
         "message": "Backend API is running!",
-        "status": "ok"
+        "status": "ok",
+        "worker_pid": os.getpid()
     })
 
-@app.route("/test-predict", methods=["POST"])
-def test_predict():
-    print("[DEBUG] Test endpoint called!", flush=True)
-    return jsonify({"status": "test endpoint works"})
 
 @app.route("/predict", methods=["POST"])
 def predict():
     """
     Accepts an uploaded MRI file (.nii or .nii.gz), runs inference,
     and returns heatmaps for each slice.
-    
-    Returns:
-        JSON with:
-        - filename: original filename
-        - slices: list of objects with base64-encoded overlay and raw images
-        - count: number of slices processed
     """
-    print("[DEBUG] /predict endpoint called", flush=True)
+    print(f"[DEBUG] Worker {os.getpid()}: /predict endpoint called", flush=True)
+    sys.stdout.flush()
 
     if "file" not in request.files:
         print("[DEBUG] No file in request", flush=True)
@@ -102,12 +137,22 @@ def predict():
         temp_path = temp_file.name
 
     print(f"[DEBUG] File saved to: {temp_path}", flush=True)
+    sys.stdout.flush()
 
     try:
         print(f"[INFO] Starting inference for {file.filename}...", flush=True)
+        sys.stdout.flush()
         
-        # Step 1: Preprocess the .nii file to get array of slices
+        # Step 1: Get the model (lazy loads if needed)
+        print("[INFO] Getting model instance...", flush=True)
+        model = get_model()
+        print("[INFO] Model instance acquired", flush=True)
+        sys.stdout.flush()
+        
+        # Step 2: Preprocess the .nii file to get array of slices
         print("[INFO] Preprocessing MRI volume...", flush=True)
+        sys.stdout.flush()
+        
         slices_array = preprocess_single_file(
             file_path=temp_path,
             n_slices=20,
@@ -118,38 +163,37 @@ def predict():
         )
         
         print(f"[INFO] Preprocessed {slices_array.shape[0]} slices", flush=True)
+        print(f"[DEBUG] Slices array shape: {slices_array.shape}, dtype: {slices_array.dtype}", flush=True)
+        sys.stdout.flush()
         
-        # Step 2: Run inference on all slices
+        # Step 3: Run inference on all slices
         print("[INFO] Running model inference...", flush=True)
-        print(f"[DEBUG] About to call predict_patients_slices with {slices_array.shape[0]} slices", flush=True)
-        print(f"[DEBUG] Model type: {type(model)}", flush=True)
-        print(f"[DEBUG] Checkpoint path: {MODEL_CHECKPOINT_PATH}", flush=True)
+        sys.stdout.flush()
+        
         results = predict_patients_slices(
             model=model,
             checkpoint_path=MODEL_CHECKPOINT_PATH,
             slices_array=slices_array,
             patch_size=PATCH_SIZE,
             stride=8,
-            return_originals=True,  # Include raw slices for frontend toggle
-            skip_load=True, # Don't reload the weights since they are loaded in already
+            return_originals=True,
+            skip_load=True,  # Weights already loaded
         )
 
-        print(f"[DEBUG] predict_patients_slices returned!", flush=True)
         print(f"[INFO] Inference returned {len(results)} results", flush=True)
+        sys.stdout.flush()
         
-        # Step 3: Convert both overlay and raw images to base64 for frontend
-        print("[INFO] Encoding results for frontend...")
+        # Step 4: Convert both overlay and raw images to base64 for frontend
+        print("[INFO] Encoding results for frontend...", flush=True)
         encoded_slices = []
         
         for i, result in enumerate(results):
-            # Convert overlay numpy array to PIL Image and encode
             overlay_img = Image.fromarray(result["overlay"])
             overlay_buffer = io.BytesIO()
             overlay_img.save(overlay_buffer, format="PNG")
             overlay_buffer.seek(0)
             overlay_encoded = base64.b64encode(overlay_buffer.read()).decode("utf-8")
             
-            # Convert raw slice numpy array to PIL Image and encode
             raw_img = Image.fromarray(result["raw_slice"])
             raw_buffer = io.BytesIO()
             raw_img.save(raw_buffer, format="PNG")
@@ -162,7 +206,8 @@ def predict():
                 "raw": f"data:image/png;base64,{raw_encoded}"
             })
         
-        print(f"[INFO] Inference complete for {file.filename}")
+        print(f"[SUCCESS] Inference complete for {file.filename}", flush=True)
+        sys.stdout.flush()
         
         return jsonify({
             "filename": file.filename,
@@ -172,16 +217,17 @@ def predict():
         })
 
     except Exception as e:
-        print(f"[ERROR] Inference failed: {e}")
+        print(f"[ERROR] Inference failed: {e}", flush=True)
         import traceback
         traceback.print_exc()
+        sys.stdout.flush()
         return jsonify({"error": str(e)}), 500
 
     finally:
         # Clean up temporary file
         if os.path.exists(temp_path):
             os.remove(temp_path)
-            print(f"[INFO] Cleaned up temporary file")
+            print(f"[INFO] Cleaned up temporary file", flush=True)
 
 
 @app.route("/preview", methods=["POST"])
@@ -192,20 +238,17 @@ def preview():
 
     file = request.files["file"]
 
-    # Check extension
     if not (file.filename.endswith(".nii") or file.filename.endswith(".nii.gz")):
         return jsonify({
             "error": "Invalid file type. Please upload a .nii or .nii.gz file"
         }), 400
 
-    # Create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
         suffix = ".nii.gz" if file.filename.endswith(".nii.gz") else ".nii"
         temp_path = os.path.join(temp_dir, f"uploaded{suffix}")
         file.save(temp_path)
 
         try:
-            # Use existing preprocessing to save axial slices as PNGs
             preprocess_single_file(
                 temp_path,
                 n_slices=20,
@@ -216,7 +259,6 @@ def preview():
                 use_all_slices=False
             )
 
-            # Collect all PNGs and encode them to base64
             png_files = sorted(Path(temp_dir).glob("*.png"))
             preview_images = []
             for png_path in png_files:
@@ -231,7 +273,7 @@ def preview():
             })
 
         except Exception as e:
-            print(f"[ERROR] Preview generation failed: {e}")
+            print(f"[ERROR] Preview generation failed: {e}", flush=True)
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500

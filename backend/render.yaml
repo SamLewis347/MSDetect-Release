@@ -4,7 +4,8 @@ services:
     runtime: python
     plan: standard  # Explicitly set plan
     buildCommand: pip install -r requirements.txt
-    # Increased timeout to 900s (15 min), added threading for CPU-bound work
+    # Timeout set to 900s (15 min), added threading for CPU-bound work
+    # No --preload flag - TensorFlow must load AFTER worker fork
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 900 --workers 1 --threads 2 --worker-class gthread --max-requests 10 --max-requests-jitter 5 --limit-request-line 8190 --limit-request-field_size 8190 --graceful-timeout 120
     envVars:
       - key: PYTHON_VERSION

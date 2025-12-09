@@ -329,80 +329,83 @@ def test_model(model, checkpoint_path, slice_path, patch_size=32, stride=8, disp
 def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32, stride=8, return_originals = False, skip_load=True):
     """
     Run the MS inference on every slice of a preprocessed MRI volume.
-
-    Args:
-        model: Keras model
-        checkpoint_path: path to saved weights
-        slices_array: numpy array (N, H, H, 3) from the preprocess_single_file() function inside utils/preprocess_mri_to_png.py
-        patch_size: size of each sliding patch
-        stride: how far to move the patch each step
-        return_originals: include original slices in output or just the predicted heatmaps
-        skip_load: If True, assume weights are already loaded (for web API use)
-
-    Returns:
-        List of dicts, one per slice
-        [
-            {
-                "heatmap": np.ndarray (H, W, 3),
-                "overlay": np.ndarray (H, W, 3),
-                "raw_slice": optional
-            }
-        ] 
     """
-    print("[DEBUG] ENTERED predict_patients_slices function!", flush=True)
+    import sys
+    print(f"[DEBUG] Worker PID {os.getpid()}: ENTERED predict_patients_slices!", flush=True)
     print(f"[DEBUG] skip_load={skip_load}, slices shape={slices_array.shape}", flush=True)
+    sys.stdout.flush()
     
     # Load the model weights before making predictions if the model has not been loaded already
     if not skip_load:
-        print("Loading model weights...")
-        model.load_weights(checkpoint_path)
+        print("Loading model weights...", flush=True)
+        try:
+            model.load_weights(checkpoint_path)
+            print("Model weights loaded successfully!", flush=True)
+        except Exception as e:
+            print(f"[ERROR] Failed to load weights: {e}", flush=True)
+            raise
 
     results = []
     total_slices = slices_array.shape[0]
+    
+    print(f"[INFO] Starting processing of {total_slices} slices", flush=True)
+    sys.stdout.flush()
 
     # Iterate through each preprocessed slice
     for i in range(total_slices):
-        print(f"[INFO] Preprocessing slice {i+1}/{total_slices}")
+        print(f"[INFO] Processing slice {i+1}/{total_slices}", flush=True)
+        sys.stdout.flush()
 
-        # Confirm that slice is converted to uint8 (0-255)
-        img = slices_array[i].astype(np.uint8) # Shape (224, 224, 3)
-        h, w, _ = img.shape
+        try:
+            # Confirm that slice is converted to uint8 (0-255)
+            print(f"[DEBUG] Converting slice {i+1} to uint8...", flush=True)
+            img = slices_array[i].astype(np.uint8) # Shape (224, 224, 3)
+            h, w, _ = img.shape
+            print(f"[DEBUG] Slice {i+1} shape: {img.shape}", flush=True)
 
-        patches = [] # List of the patch image arrays
-        coords = [] # Matching list of (row, col) positions
+            patches = [] # List of the patch image arrays
+            coords = [] # Matching list of (row, col) positions
 
-        # --- SLIDING WINDOW PATCH EXTRACTION ---
-        # Slide a patch_sized window over the full slice
-        # For every (row, col) location, extract a patch and remember where it was
-        for row in range(0, h - patch_size + 1, stride):
-            for col in range (0, w - patch_size + 1, stride):
-                patch = img[row:row+patch_size, col:col+patch_size]
-                patches.append(patch)
-                coords.append((row, col))
+            # --- SLIDING WINDOW PATCH EXTRACTION ---
+            print(f"[DEBUG] Extracting patches from slice {i+1}...", flush=True)
+            for row in range(0, h - patch_size + 1, stride):
+                for col in range (0, w - patch_size + 1, stride):
+                    patch = img[row:row+patch_size, col:col+patch_size]
+                    patches.append(patch)
+                    coords.append((row, col))
 
+            print(f"[DEBUG] Slice {i+1}: Extracted {len(patches)} patches", flush=True)
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"[ERROR] Failed during patch extraction for slice {i+1}: {e}", flush=True)
+            raise
+        
         # Convert to float in [0, 1] range for the model
         patches = np.array(patches, dtype=np.float32) / 255.0
 
         # --- MODEL PREDICTIONS ---
-        # The model predicts one value per patch (MS probability)
         predictions = []
         batch_size = 128
+
+        print(f"[DEBUG] Slice {i+1}: Starting predictions on {len(patches)} patches", flush=True)
+        sys.stdout.flush()
 
         # Predict in batches to avoid CPU/GPU memory issues
         for j in range (0, len(patches), batch_size):
             batch = patches[j:j+batch_size]
-            prediction = model.predict(batch, verbose=0).flatten()
-            predictions.extend(prediction)
+            try:
+                prediction = model.predict(batch, verbose=0).flatten()
+                predictions.extend(prediction)
+            except Exception as e:
+                print(f"[ERROR] Prediction failed on slice {i+1}, batch {j}: {e}", flush=True)
+                raise
+
+        print(f"[DEBUG] Slice {i+1}: Predictions complete", flush=True)
 
         # --- BUILD HEATMAP BASED ON PREDICTIONS ---
-        # Two 2D arrays:
-        #   heatmap_sum: Accumulates probability scores
-        #   heatmap_count: counts how many times each pixel was covered
         heatmap_sum = np.zeros((h, w), dtype=np.float32)
         heatmap_count = np.zeros((h, w), dtype=np.float32)
 
-        # Each patch covers a specific region of the slice
-        # We can "deposit" each probability into its own region
         for (row, col), p in zip(coords, predictions):
             heatmap_sum[row:row+patch_size, col:col+patch_size] += p
             heatmap_count[row:row+patch_size, col:col+patch_size] += 1
@@ -417,7 +420,6 @@ def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32,
         heatmap_color = cm.jet(hm_norm)[..., :3]
 
         # --- OVERLAY HEATMAP ON ORIGINAL SLICE ---
-        # Convert original slice to [0,1], blend 50/50 with heatmap.
         overlay = (0.5 * (img / 255.0)) + (0.5 * heatmap_color)
         overlay = np.clip(overlay, 0, 1)
 
@@ -427,13 +429,15 @@ def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32,
             "overlay": (overlay * 255).astype(np.uint8)
         }
 
-        # Optional: return raw slice for frontend or debugging
         if return_originals:
             result["raw_slice"] = img
 
         results.append(result)
+        print(f"[INFO] Completed slice {i+1}/{total_slices}", flush=True)
+        sys.stdout.flush()
 
-    print("[INFO] Finished MS inference for patient.")
+    print("[INFO] Finished MS inference for all slices.", flush=True)
+    sys.stdout.flush()
     return results
 
 def main(args):
