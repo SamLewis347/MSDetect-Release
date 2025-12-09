@@ -121,6 +121,9 @@ def predict():
         
         # Step 2: Run inference on all slices
         print("[INFO] Running model inference...", flush=True)
+        print(f"[DEBUG] About to call predict_patients_slices with {slices_array.shape[0]} slices", flush=True)
+        print(f"[DEBUG] Model type: {type(model)}", flush=True)
+        print(f"[DEBUG] Checkpoint path: {MODEL_CHECKPOINT_PATH}", flush=True)
         results = predict_patients_slices(
             model=model,
             checkpoint_path=MODEL_CHECKPOINT_PATH,
@@ -131,6 +134,7 @@ def predict():
             skip_load=True, # Don't reload the weights since they are loaded in already
         )
 
+        print(f"[DEBUG] predict_patients_slices returned!", flush=True)
         print(f"[INFO] Inference returned {len(results)} results", flush=True)
         
         # Step 3: Convert both overlay and raw images to base64 for frontend

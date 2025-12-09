@@ -349,7 +349,9 @@ def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32,
             }
         ] 
     """
-
+    print("[DEBUG] ENTERED predict_patients_slices function!", flush=True)
+    print(f"[DEBUG] skip_load={skip_load}, slices shape={slices_array.shape}", flush=True)
+    
     # Load the model weights before making predictions if the model has not been loaded already
     if not skip_load:
         print("Loading model weights...")
