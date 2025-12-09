@@ -2,8 +2,17 @@ services:
   - type: web
     name: msdetect-backend
     runtime: python
+    plan: standard  # Explicitly set plan
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600 --workers 1 --worker-class sync --max-requests 1 --max-requests-jitter 1 --limit-request-line 8190 --limit-request-field_size 8190
+    # Increased timeout to 900s (15 min), added threading for CPU-bound work
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 900 --workers 1 --threads 2 --worker-class gthread --max-requests 10 --max-requests-jitter 5 --limit-request-line 8190 --limit-request-field_size 8190 --graceful-timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.1
+      # Set TensorFlow to use fewer threads to avoid CPU contention
+      - key: TF_NUM_INTRAOP_THREADS
+        value: 1
+      - key: TF_NUM_INTEROP_THREADS
+        value: 1
+      - key: OMP_NUM_THREADS
+        value: 1
