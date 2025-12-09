@@ -3,7 +3,7 @@ services:
     name: msdetect-backend
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600 --workers 1 --worker-class sync --max-requests 1 --max-requests-jitter 1 --limit-request-line 8190 --limit-request-field_size 8190
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.1

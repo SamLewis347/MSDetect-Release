@@ -62,6 +62,10 @@ def home():
         "status": "ok"
     })
 
+@app.route("/test-predict", methods=["POST"])
+def test_predict():
+    print("[DEBUG] Test endpoint called!", flush=True)
+    return jsonify({"status": "test endpoint works"})
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -75,13 +79,18 @@ def predict():
         - slices: list of objects with base64-encoded overlay and raw images
         - count: number of slices processed
     """
+    print("[DEBUG] /predict endpoint called", flush=True)
+
     if "file" not in request.files:
+        print("[DEBUG] No file in request", flush=True)
         return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files["file"]
+    print(f"[DEBUG] File received: {file.filename}", flush=True)
 
     # Validate file type
     if not (file.filename.endswith(".nii") or file.filename.endswith(".nii.gz")):
+        print("[DEBUG] Invalid file type", flush=True)
         return jsonify({
             "error": "Invalid file type. Please upload a .nii or .nii.gz file"
         }), 400
@@ -92,11 +101,13 @@ def predict():
         file.save(temp_file.name)
         temp_path = temp_file.name
 
+    print(f"[DEBUG] File saved to: {temp_path}", flush=True)
+
     try:
-        print(f"[INFO] Starting inference for {file.filename}...")
+        print(f"[INFO] Starting inference for {file.filename}...", flush=True)
         
         # Step 1: Preprocess the .nii file to get array of slices
-        print("[INFO] Preprocessing MRI volume...")
+        print("[INFO] Preprocessing MRI volume...", flush=True)
         slices_array = preprocess_single_file(
             file_path=temp_path,
             n_slices=20,
@@ -106,10 +117,10 @@ def predict():
             use_all_slices=False
         )
         
-        print(f"[INFO] Preprocessed {slices_array.shape[0]} slices")
+        print(f"[INFO] Preprocessed {slices_array.shape[0]} slices", flush=True)
         
         # Step 2: Run inference on all slices
-        print("[INFO] Running model inference...")
+        print("[INFO] Running model inference...", flush=True)
         results = predict_patients_slices(
             model=model,
             checkpoint_path=MODEL_CHECKPOINT_PATH,
@@ -118,6 +129,8 @@ def predict():
             stride=8,
             return_originals=True  # Include raw slices for frontend toggle
         )
+
+        print(f"[INFO] Inference returned {len(results)} results", flush=True)
         
         # Step 3: Convert both overlay and raw images to base64 for frontend
         print("[INFO] Encoding results for frontend...")
