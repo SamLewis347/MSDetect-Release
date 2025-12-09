@@ -326,7 +326,7 @@ def test_model(model, checkpoint_path, slice_path, patch_size=32, stride=8, disp
 
     return original_image, overlayed_image
 
-def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32, stride=8, return_originals = False):
+def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32, stride=8, return_originals = False, skip_load=True):
     """
     Run the MS inference on every slice of a preprocessed MRI volume.
 
@@ -337,6 +337,7 @@ def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32,
         patch_size: size of each sliding patch
         stride: how far to move the patch each step
         return_originals: include original slices in output or just the predicted heatmaps
+        skip_load: If True, assume weights are already loaded (for web API use)
 
     Returns:
         List of dicts, one per slice
@@ -349,9 +350,10 @@ def predict_patients_slices(model, checkpoint_path, slices_array, patch_size=32,
         ] 
     """
 
-    # Load the model weights before making predictions
-    print("Loading model weights...")
-    model.load_weights(checkpoint_path)
+    # Load the model weights before making predictions if the model has not been loaded already
+    if not skip_load:
+        print("Loading model weights...")
+        model.load_weights(checkpoint_path)
 
     results = []
     total_slices = slices_array.shape[0]

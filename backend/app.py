@@ -127,7 +127,8 @@ def predict():
             slices_array=slices_array,
             patch_size=PATCH_SIZE,
             stride=8,
-            return_originals=True  # Include raw slices for frontend toggle
+            return_originals=True,  # Include raw slices for frontend toggle
+            skip_load=True, # Don't reload the weights since they are loaded in already
         )
 
         print(f"[INFO] Inference returned {len(results)} results", flush=True)
