@@ -325,7 +325,7 @@ const submitFile = async () => {
   formData.append("file", selectedFile.value);
 
   try {
-    const res = await axios.post(`${API_URL}/test-predict`, formData, { // PUT THIS BACK TO /predict LATER ONCE TESTING IS COMPLETED
+    const res = await axios.post(`${API_URL}/predict`, formData, { // PUT THIS BACK TO /predict LATER ONCE TESTING IS COMPLETED
       headers: { "Content-Type": "multipart/form-data" },
     });
 
