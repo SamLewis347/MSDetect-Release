@@ -281,6 +281,10 @@
 import sample_mri_and_heatmap_output from "@/assets/sample_mri_and_heatmap_output.png";
 import TeamCard from "@/components/TeamCard.vue";
 import { onMounted, onBeforeUnmount } from "vue";
+import mayfieldImg from "@/assets/team/mayfield-headshot.jpg";
+import lewisImg from "@/assets/team/lewis-headshot.JPEG";
+import bensonImg from "@/assets/team/benson-headshot.jpg";
+import eicholtzImg from "@/assets/team/headshot-eicholtz.JPG";
 
 let lines = [];
 
@@ -324,9 +328,9 @@ onBeforeUnmount(() => {
 });
 
 const teamMembers = [
-  { name: "Tucker Mayfield", image: "@/assets/team/tucker.jpg" },
-  { name: "Samuel Lewis", image: "@/assets/team/samuel.jpg" },
-  { name: "Daniel Benson", image: "@/assets/team/daniel.jpg" },
-  { name: "Dr. Matthew Eicholtz", image: "@/assets/team/matt.jpg" },
+  { name: "Tucker Mayfield", image: mayfieldImg },
+  { name: "Samuel Lewis", image: lewisImg },
+  { name: "Daniel Benson", image: bensonImg },
+  { name: "Dr. Matthew Eicholtz", image: eicholtzImg },
 ];
 </script>
