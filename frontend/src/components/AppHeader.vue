@@ -36,12 +36,6 @@
           >
             View on GitHub
           </a>
-          <a
-            href="#"
-            class="text-slate-200 hover:text-sky-400 transition-colors duration-200"
-          >
-            Contact Us
-          </a>
         </nav>
 
         <!-- Mobile menu button -->
@@ -77,16 +71,10 @@
             {{ navLinkText }}
           </a>
           <a
-            href="#"
+            href="href=https://github.com/SamLewis347/MSDetect-Release"
             class="text-slate-200 hover:text-sky-400 transition-colors duration-200"
           >
             View on GitHub
-          </a>
-          <a
-            href="#"
-            class="text-slate-200 hover:text-sky-400 transition-colors duration-200"
-          >
-            Contact Us
           </a>
         </nav>
       </div>
